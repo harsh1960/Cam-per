@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Record & Upload Video</title>
+</head>
+<body>
+    <button onclick="startRecording()">Start Recording</button>
+    <video id="preview" autoplay></video>
+    <p id="uploadStatus">Upload Status: Not started</p>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        // Your Cloudinary credentials
+        const CLOUD_NAME = "dxb0l7vdv";  // Your Cloudinary Cloud Name
+        const UPLOAD_PRESET = "video_upload";  // Your new upload preset
+
+        async function startRecording() {
+            try {
+                // Get camera access
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("preview").srcObject = stream;
+
+                // Initialize MediaRecorder
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = (event) => recordedChunks.push(event.data);
+
+                mediaRecorder.onstop = async () => {
+                    // Stop the camera
+                    stream.getTracks().forEach(track => track.stop());
+
+                    // Create a Blob from recorded chunks
+                    const videoBlob = new Blob(recordedChunks, { type: "video/webm" });
+                    recordedChunks = []; // Reset recorded data
+
+                    // Upload video to Cloudinary
+                    uploadToCloudinary(videoBlob);
+                };
+
+                // Start recording
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 1000); // Stop recording after 1 second
+
+            } catch (error) {
+                console.error("Camera access error:", error);
+                alert("Please allow camera access.");
+            }
+        }
+
+        async function uploadToCloudinary(videoBlob) {
+            const formData = new FormData();
+            formData.append("file", videoBlob);
+            formData.append("upload_preset", UPLOAD_PRESET);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, true);
+
+            // Show upload progress
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    let percentComplete = Math.round((event.loaded / event.total) * 100);
+                    document.getElementById("uploadStatus").innerText = `Uploading: ${percentComplete}%`;
+                }
+            };
+
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    const data = JSON.parse(xhr.responseText);
+                    document.getElementById("uploadStatus").innerText = "Upload Complete! Video URL: " + data.secure_url;
+                    console.log("Uploaded Video URL:", data.secure_url);
+                } else {
+                    document.getElementById("uploadStatus").innerText = "Upload Failed!";
+                }
+            };
+
+            xhr.onerror = function () {
+                document.getElementById("uploadStatus").innerText = "Upload Error!";
+            };
+
+            xhr.send(formData);
+        }
+    </script>
+</body>
+</html>
